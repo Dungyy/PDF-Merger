@@ -18,6 +18,7 @@ The PDF Merger application is a desktop tool designed to efficiently combine mul
 ## Features
 
 - **Drag-and-Drop Interface**: Easily add PDF files to the application.
+- **Progress Indication**: Visually tracks progress with a status bar during the merge process.
 - **Simple Merging**: Combine your PDF files into a single document with the click of a button.
 - **Interactive List Management**: Review and clear the list of PDFs to be merged as needed.
 
@@ -45,13 +46,13 @@ The PDF Merger application is a desktop tool designed to efficiently combine mul
 3. Install the required Python packages:
 
     ```bash
-    pip3 install PyQt5 PyPDF2
+    pip install PyQt5 PyPDF2
     ```
 
-    OR 
+    Alternatively, if you have a `requirements.txt` file:
 
-     ```bash
-    pip3 install -r requirements.txt  
+    ```bash
+    pip install -r requirements.txt  
     ```
 
 ## Usage
@@ -81,3 +82,6 @@ This software uses the following open-source packages:
 
 - [PyQt5](https://riverbankcomputing.com/software/pyqt/intro)
 
+## License
+
+This project is open-source and available under the MIT License. 

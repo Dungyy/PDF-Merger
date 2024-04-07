@@ -1,5 +1,8 @@
 import sys
-from PyQt5.QtWidgets import (QApplication, QMainWindow, QListWidget, QPushButton, QVBoxLayout, QWidget, QFileDialog, QMessageBox, QHBoxLayout, QProgressBar)
+from PyQt5.QtWidgets import (
+    QApplication, QMainWindow, QListWidget, QPushButton, QVBoxLayout, QWidget, 
+    QFileDialog, QMessageBox, QHBoxLayout, QProgressBar
+)
 from PyQt5.QtCore import Qt
 from PyPDF2 import PdfReader, PdfWriter
 
@@ -7,7 +10,7 @@ class PdfMerger(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("PDF Merger")
-        self.setGeometry(100, 100, 800, 450) 
+        self.setGeometry(100, 100, 800, 450)
         
         # Main layout
         mainLayout = QVBoxLayout()
@@ -51,21 +54,19 @@ class PdfMerger(QMainWindow):
         
         # Add widgets to the main layout
         mainLayout.addWidget(self.listWidget)
-        mainLayout.addWidget(self.progressBar) 
+        mainLayout.addWidget(self.progressBar)
         mainLayout.addLayout(buttonLayout)
         
         # Set the main widget
         container = QWidget()
         container.setLayout(mainLayout)
         self.setCentralWidget(container)
-        
+
         container = QWidget()
         container.setLayout(mainLayout)
-        self.setCentralWidget(container)
-        
-        # Enable dropping on the window
+        self.setCentralWidget(container)     
         self.setAcceptDrops(True)
-        
+    # Enable dropping on the window
     def dragEnterEvent(self, event):
         if event.mimeData().hasUrls():
             event.acceptProposedAction()
@@ -73,11 +74,15 @@ class PdfMerger(QMainWindow):
             super().dragEnterEvent(event)
 
     def dropEvent(self, event):
-        files = [u.toLocalFile() for u in event.mimeData().urls()]
-        for file in files:
-            if file.lower().endswith('.pdf'):
-                self.listWidget.addItem(file)
-        event.acceptProposedAction()
+        if event.mimeData().hasUrls():
+            for url in event.mimeData().urls():
+                if url.isLocalFile():
+                    file_path = url.toLocalFile()
+                    if file_path.lower().endswith('.pdf'):
+                        self.listWidget.addItem(file_path)
+            event.acceptProposedAction()
+        else:
+            event.ignore()
 
     def merge_pdfs(self):
         if self.listWidget.count() == 0:
@@ -86,33 +91,30 @@ class PdfMerger(QMainWindow):
         
         output_filename = QFileDialog.getSaveFileName(self, "Save Merged PDF", "", "PDF Files (*.pdf)")[0]
         if not output_filename:
-            self.progressBar.setValue(0)
             return
 
         self.progressBar.setValue(0)
         try:
             pdf_writer = PdfWriter()
             num_files = self.listWidget.count()
-            for index, _ in enumerate(range(self.listWidget.count()), 1):
-                filepath = self.listWidget.item(index - 1).text()
+            for index in range(num_files):
+                filepath = self.listWidget.item(index).text()
                 pdf_reader = PdfReader(filepath)
                 for page in pdf_reader.pages:
                     pdf_writer.add_page(page)
-                self.progressBar.setValue(int((index / num_files) * 100))  # Update progress
+                self.progressBar.setValue(int((index + 1) / num_files * 100))  # Update progress
                 
             with open(output_filename, 'wb') as out:
                 pdf_writer.write(out)
             
             QMessageBox.information(self, "Merge Successful", f"Merged PDF saved as: {output_filename}")
-            self.progressBar.setValue(100)  # Complete progress
-            self.clear_list()  # clear list after a successful merge
         except Exception as e:
             QMessageBox.warning(self, "Merge Failed", "An error occurred during the merge process.")
         finally:
-            self.progressBar.setValue(0)  # Reset progress bar after merge is complete or fails    
+            self.progressBar.setValue(0)  # Reset progress bar after merge is complete or fails
+            self.clear_list()  # clear list after a successful merge
 
     def clear_list(self):
-        # Clear all items from the list widget
         self.listWidget.clear()
 
     def remove_selected_items(self):

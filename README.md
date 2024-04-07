@@ -74,7 +74,6 @@ We welcome contributions to the PDF Merger project! Please consider contributing
 - Discussing the current state of the code
 - Submitting a fix
 - Proposing new features
-- Becoming a maintainer
 
 ## Credits
 
@@ -84,4 +83,4 @@ This software uses the following open-source packages:
 
 ## License
 
-This project is open-source and available under the MIT License. 
+This project is open-source and available under the [MIT-License](MIT-LICENSE.txt). 

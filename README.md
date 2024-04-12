@@ -49,13 +49,7 @@ The PDF Merger application is a desktop tool designed to efficiently combine mul
    python -m venv env
    source env/bin/activate
 
-4. Install the required Python packages:
-
-    ```bash
-    pip install PyQt5 PyPDF2
-    ```
-
-    Alternatively, if you have a `requirements.txt` file:
+4. Install the `requirements.txt` file:
 
     ```bash
     pip install -r requirements.txt  

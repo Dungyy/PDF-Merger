@@ -42,8 +42,14 @@ The PDF Merger application is a desktop tool designed to efficiently combine mul
     ```bash
     cd PDF-Merger
     ```
+    
+3. Use env for Python packages
 
-3. Install the required Python packages:
+   ```sh 
+   python -m venv env
+   source env/bin/activate
+
+4. Install the required Python packages:
 
     ```bash
     pip install PyQt5 PyPDF2
@@ -83,4 +89,4 @@ This software uses the following open-source packages:
 
 ## License
 
-This project is open-source and available under the [MIT-License](MIT-LICENSE.txt). 
+This project is open-source and available for anyone to use at there own risk.

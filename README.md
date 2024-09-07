@@ -4,6 +4,7 @@
 
 The PDF Merger application is a desktop tool designed to efficiently combine multiple PDF documents into one. Built with PyQt5 for a seamless GUI experience and leveraging PyPDF2 for backend PDF processing, it simplifies the task of PDF merging with drag-and-drop functionality.
 
+![alt text](./dungyzon-file.png)
 ## Table of Contents
 
 - [Features](#features)

@@ -5,17 +5,19 @@ from PyQt5.QtWidgets import (
 )
 from PyQt5.QtCore import Qt
 from PyPDF2 import PdfReader, PdfWriter
+from PIL import Image
+from io import BytesIO  # Import BytesIO to handle in-memory files
 
 class PdfMerger(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("PDF Merger")
+        self.setWindowTitle("PDF and JPG Merger")
         self.setGeometry(100, 100, 800, 450)
         
         # Main layout
         mainLayout = QVBoxLayout()
         
-        # List widget to display PDF files
+        # List widget to display PDF and JPG files
         self.listWidget = QListWidget()
         self.listWidget.setStyleSheet("QListWidget {background-color: #f0f0f0; border: 1px solid grey;}")
         self.listWidget.setAcceptDrops(True)
@@ -31,11 +33,16 @@ class PdfMerger(QMainWindow):
         
         # Button layout
         buttonLayout = QHBoxLayout()
+
+        # Open File Explorer button
+        self.addButton = QPushButton("Add PDFs or JPGs")
+        self.addButton.setStyleSheet("QPushButton {background-color: #FF9800; color: white;}")
+        self.addButton.clicked.connect(self.open_file_explorer)
         
         # Merge button
         self.mergeButton = QPushButton("Merge")
         self.mergeButton.setStyleSheet("QPushButton {background-color: #4CAF50; color: white;}")
-        self.mergeButton.clicked.connect(self.merge_pdfs)
+        self.mergeButton.clicked.connect(self.merge_files)
         
         # Clear button
         self.clearButton = QPushButton("Clear")
@@ -48,6 +55,7 @@ class PdfMerger(QMainWindow):
         self.removeSelectedButton.clicked.connect(self.remove_selected_items)
         
         # Add buttons to the layout
+        buttonLayout.addWidget(self.addButton)
         buttonLayout.addWidget(self.mergeButton)
         buttonLayout.addWidget(self.clearButton)
         buttonLayout.addWidget(self.removeSelectedButton)
@@ -61,11 +69,7 @@ class PdfMerger(QMainWindow):
         container = QWidget()
         container.setLayout(mainLayout)
         self.setCentralWidget(container)
-
-        container = QWidget()
-        container.setLayout(mainLayout)
-        self.setCentralWidget(container)     
-        self.setAcceptDrops(True)
+        
     # Enable dropping on the window
     def dragEnterEvent(self, event):
         if event.mimeData().hasUrls():
@@ -78,15 +82,15 @@ class PdfMerger(QMainWindow):
             for url in event.mimeData().urls():
                 if url.isLocalFile():
                     file_path = url.toLocalFile()
-                    if file_path.lower().endswith('.pdf'):
+                    if file_path.lower().endswith(('.pdf', '.jpg', '.jpeg')):
                         self.listWidget.addItem(file_path)
             event.acceptProposedAction()
         else:
             event.ignore()
 
-    def merge_pdfs(self):
+    def merge_files(self):
         if self.listWidget.count() == 0:
-            QMessageBox.information(self, "No PDFs Selected", "Please add PDF files to merge.")
+            QMessageBox.information(self, "No PDFs or JPGs Selected", "Please add PDF or JPG files to merge.")
             return
         
         output_filename = QFileDialog.getSaveFileName(self, "Save Merged PDF", "", "PDF Files (*.pdf)")[0]
@@ -99,9 +103,21 @@ class PdfMerger(QMainWindow):
             num_files = self.listWidget.count()
             for index in range(num_files):
                 filepath = self.listWidget.item(index).text()
-                pdf_reader = PdfReader(filepath)
-                for page in pdf_reader.pages:
-                    pdf_writer.add_page(page)
+                if filepath.lower().endswith('.pdf'):
+                    # Handle PDF files
+                    pdf_reader = PdfReader(filepath)
+                    for page in pdf_reader.pages:
+                        pdf_writer.add_page(page)
+                elif filepath.lower().endswith(('.jpg', '.jpeg')):
+                    # Convert JPG to PDF and add to the writer
+                    image = Image.open(filepath)
+                    pdf_bytes = BytesIO()  # Create an in-memory byte buffer
+                    image.convert("RGB").save(pdf_bytes, format='PDF')  # Save image as PDF in memory
+                    pdf_bytes.seek(0)  # Go to the beginning of the BytesIO object
+                    temp_reader = PdfReader(pdf_bytes)
+                    for page in temp_reader.pages:
+                        pdf_writer.add_page(page)
+
                 self.progressBar.setValue(int((index + 1) / num_files * 100))  # Update progress
                 
             with open(output_filename, 'wb') as out:
@@ -109,7 +125,7 @@ class PdfMerger(QMainWindow):
             
             QMessageBox.information(self, "Merge Successful", f"Merged PDF saved as: {output_filename}")
         except Exception as e:
-            QMessageBox.warning(self, "Merge Failed", "An error occurred during the merge process.")
+            QMessageBox.warning(self, "Merge Failed", f"An error occurred during the merge process: {e}")
         finally:
             self.progressBar.setValue(0)  # Reset progress bar after merge is complete or fails
             self.clear_list()  # clear list after a successful merge
@@ -120,6 +136,13 @@ class PdfMerger(QMainWindow):
     def remove_selected_items(self):
         for selectedItem in self.listWidget.selectedItems():
             self.listWidget.takeItem(self.listWidget.row(selectedItem))
+
+    def open_file_explorer(self):
+        files, _ = QFileDialog.getOpenFileNames(self, "Select PDF or JPG Files", "", "PDF Files (*.pdf);;Image Files (*.jpg *.jpeg)")
+        if files:
+            for file in files:
+                if file.lower().endswith(('.pdf', '.jpg', '.jpeg')):
+                    self.listWidget.addItem(file)
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)

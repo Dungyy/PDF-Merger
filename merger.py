@@ -2,7 +2,7 @@ import sys
 import os
 from PyQt5.QtWidgets import (
     QApplication, QMainWindow, QListWidget, QPushButton, QVBoxLayout, QWidget, 
-    QFileDialog, QMessageBox, QHBoxLayout, QProgressBar, QLabel, QGridLayout, QListWidgetItem
+    QFileDialog, QMessageBox, QHBoxLayout, QProgressBar, QLabel, QGridLayout
 )
 from PyQt5.QtCore import Qt
 from PyPDF2 import PdfReader, PdfWriter
@@ -13,7 +13,7 @@ from lxml import etree  # For handling XML files
 from reportlab.lib.pagesizes import letter
 from reportlab.pdfgen import canvas
 
-class PdfMerger(QMainWindow):
+class FileMerger(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("Dungerz All File Merger")
@@ -30,7 +30,7 @@ class PdfMerger(QMainWindow):
         titleLabel.setAlignment(Qt.AlignCenter)
         titleLabel.setStyleSheet("font-size: 24px; font-weight: bold; margin-bottom: 5px;")
         
-        descriptionLabel = QLabel("Drag and drop files or use the buttons below to add files. You can merge PDFs, images, DOCX, and XML into a single PDF file.")
+        descriptionLabel = QLabel("Drag and drop files or use the buttons below to add files. You can merge PDFs, DOCX, XML, and images into a single document.")
         descriptionLabel.setAlignment(Qt.AlignCenter)
         descriptionLabel.setWordWrap(True)
         descriptionLabel.setStyleSheet("font-size: 14px; margin-bottom: 20px;")
@@ -76,7 +76,7 @@ class PdfMerger(QMainWindow):
         self.addButton.clicked.connect(self.open_file_explorer)
 
         # Merge Button
-        self.mergeButton = QPushButton("Merge Files")
+        self.mergeButton = QPushButton("Merge and Save")
         self.mergeButton.setStyleSheet("""
             QPushButton {
                 background-color: #28a745;
@@ -169,58 +169,32 @@ class PdfMerger(QMainWindow):
                 if file.lower().endswith(('.pdf', '.jpg', '.jpeg', '.png', '.bmp', '.gif', '.tiff', '.docx', '.xml')):
                     self.listWidget.addItem(file)
 
-    # Convert DOCX to PDF and return BytesIO
-    def convert_docx_to_pdf(self, filepath):
-        output = BytesIO()
-        c = canvas.Canvas(output, pagesize=letter)
-        doc = Document(filepath)
-        width, height = letter
-        text_object = c.beginText(40, height - 40)
-        text_object.setFont("Helvetica", 12)
-
-        # Read each paragraph from the DOCX and add it to the PDF
-        for para in doc.paragraphs:
-            text_object.textLine(para.text)
-        c.drawText(text_object)
-        c.showPage()
-        c.save()
-
-        output.seek(0)
-        return output
-
-    # Convert XML to PDF and return BytesIO
-    def convert_xml_to_pdf(self, filepath):
-        output = BytesIO()
-        c = canvas.Canvas(output, pagesize=letter)
-        tree = etree.parse(filepath)
-        root = tree.getroot()
-        width, height = letter
-        text_object = c.beginText(40, height - 40)
-        text_object.setFont("Helvetica", 12)
-
-        # Recursively traverse and add XML data
-        def traverse_xml(node):
-            text_object.textLine(etree.tostring(node, pretty_print=True, encoding='unicode'))
-
-        traverse_xml(root)
-        c.drawText(text_object)
-        c.showPage()
-        c.save()
-
-        output.seek(0)
-        return output
-
-    # Merge the selected PDFs, images, DOCX, and XML files
+    # Merge the selected files and export to desired format (PDF, DOCX, etc.)
     def merge_files(self):
         if self.listWidget.count() == 0:
             QMessageBox.information(self, "No Files Selected", "Please add files to merge.")
             return
         
-        output_filename = QFileDialog.getSaveFileName(self, "Save Merged PDF", "", "PDF Files (*.pdf)")[0]
+        # Choose the export format
+        export_formats = "PDF Files (*.pdf);;Word Files (*.docx);;All Files (*)"
+        output_filename, selected_format = QFileDialog.getSaveFileName(self, "Save Merged File", "", export_formats)
         if not output_filename:
             return
 
+        # Determine if exporting as PDF or DOCX
+        is_pdf = selected_format == "PDF Files (*.pdf)"
+        is_docx = selected_format == "Word Files (*.docx)"
+
+        if is_pdf:
+            self.export_to_pdf(output_filename)
+        elif is_docx:
+            self.export_to_docx(output_filename)
+
+        # Reset the progress bar at the end
         self.progressBar.setValue(0)
+
+    # Export merged files as PDF
+    def export_to_pdf(self, output_filename):
         try:
             pdf_writer = PdfWriter()
             num_files = self.listWidget.count()
@@ -264,8 +238,40 @@ class PdfMerger(QMainWindow):
         except Exception as e:
             QMessageBox.warning(self, "Merge Failed", f"An error occurred during the merge process: {e}")
 
-        finally:
-            self.progressBar.setValue(0)  # Reset progress bar after merge is complete or fails
+    # Export merged files as DOCX
+    def export_to_docx(self, output_filename):
+        try:
+            doc = Document()
+            num_files = self.listWidget.count()
+            for index in range(num_files):
+                filepath = self.listWidget.item(index).text()
+                if filepath.lower().endswith('.pdf'):
+                    # Extract text from PDF and add to DOCX
+                    pdf_reader = PdfReader(filepath)
+                    for page in pdf_reader.pages:
+                        doc.add_paragraph(page.extract_text())
+                elif filepath.lower().endswith(('.jpg', '.jpeg', '.png', '.bmp', '.gif', '.tiff')):
+                    # Convert image to text (or just add a placeholder)
+                    doc.add_paragraph(f"[Image: {os.path.basename(filepath)}]")
+                elif filepath.lower().endswith('.docx'):
+                    # Add DOCX content
+                    docx_reader = Document(filepath)
+                    for para in docx_reader.paragraphs:
+                        doc.add_paragraph(para.text)
+                elif filepath.lower().endswith('.xml'):
+                    # Add XML content as plain text
+                    with open(filepath, 'r', encoding='utf-8') as xml_file:
+                        doc.add_paragraph(xml_file.read())
+
+                self.progressBar.setValue(int((index + 1) / num_files * 100))  # Update progress
+
+            doc.save(output_filename)
+
+            QMessageBox.information(self, "Merge Successful", f"Merged DOCX saved as: {output_filename}")
+            self.listWidget.clear()  # Clear the list after successful merge
+
+        except Exception as e:
+            QMessageBox.warning(self, "Merge Failed", f"An error occurred during the merge process: {e}")
 
     # Clear the list of selected files
     def clear_list(self):
@@ -279,6 +285,6 @@ class PdfMerger(QMainWindow):
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
-    window = PdfMerger()
+    window = FileMerger()
     window.show()
     sys.exit(app.exec_())

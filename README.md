@@ -44,7 +44,7 @@ The **Dungerz All File Merger** is a versatile desktop application designed to m
 2. Navigate to the cloned directory:
 
     ```bash
-    cd Dungerz-All-File-Merger
+    cd PDF-Merger
     ```
 
 3. Set up a virtual environment for Python packages:

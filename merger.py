@@ -13,6 +13,7 @@ class PdfMerger(QMainWindow):
         super().__init__()
         self.setWindowTitle("PDF and JPG Merger")
         self.setGeometry(100, 100, 800, 450)
+        self.setAcceptDrops(True)  # Enable drag and drop for the entire window
         
         # Main layout
         mainLayout = QVBoxLayout()
@@ -20,7 +21,6 @@ class PdfMerger(QMainWindow):
         # List widget to display PDF and JPG files
         self.listWidget = QListWidget()
         self.listWidget.setStyleSheet("QListWidget {background-color: #f0f0f0; border: 1px solid grey;}")
-        self.listWidget.setAcceptDrops(True)
         self.listWidget.setDragEnabled(True)
         self.listWidget.setSelectionMode(QListWidget.MultiSelection)
         self.listWidget.setDragDropMode(QListWidget.DragDropMode.InternalMove)
@@ -69,14 +69,15 @@ class PdfMerger(QMainWindow):
         container = QWidget()
         container.setLayout(mainLayout)
         self.setCentralWidget(container)
-        
-    # Enable dropping on the window
+
+    # Drag Enter Event (for the entire window)
     def dragEnterEvent(self, event):
         if event.mimeData().hasUrls():
             event.acceptProposedAction()
         else:
-            super().dragEnterEvent(event)
+            event.ignore()
 
+    # Drop Event (for the entire window)
     def dropEvent(self, event):
         if event.mimeData().hasUrls():
             for url in event.mimeData().urls():
@@ -88,6 +89,15 @@ class PdfMerger(QMainWindow):
         else:
             event.ignore()
 
+    # File Explorer to open PDF or JPG files
+    def open_file_explorer(self):
+        files, _ = QFileDialog.getOpenFileNames(self, "Select PDF or JPG Files", "", "PDF Files (*.pdf);;Image Files (*.jpg *.jpeg)")
+        if files:
+            for file in files:
+                if file.lower().endswith(('.pdf', '.jpg', '.jpeg')):
+                    self.listWidget.addItem(file)
+
+    # Merge the selected PDFs and JPGs
     def merge_files(self):
         if self.listWidget.count() == 0:
             QMessageBox.information(self, "No PDFs or JPGs Selected", "Please add PDF or JPG files to merge.")
@@ -130,19 +140,15 @@ class PdfMerger(QMainWindow):
             self.progressBar.setValue(0)  # Reset progress bar after merge is complete or fails
             self.clear_list()  # clear list after a successful merge
 
+    # Clear the list of selected files
     def clear_list(self):
         self.listWidget.clear()
 
+    # Remove selected items from the list
     def remove_selected_items(self):
         for selectedItem in self.listWidget.selectedItems():
             self.listWidget.takeItem(self.listWidget.row(selectedItem))
 
-    def open_file_explorer(self):
-        files, _ = QFileDialog.getOpenFileNames(self, "Select PDF or JPG Files", "", "PDF Files (*.pdf);;Image Files (*.jpg *.jpeg)")
-        if files:
-            for file in files:
-                if file.lower().endswith(('.pdf', '.jpg', '.jpeg')):
-                    self.listWidget.addItem(file)
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)

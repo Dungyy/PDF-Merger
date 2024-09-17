@@ -4,7 +4,7 @@
 
 The **Dungerz All File Merger** is a versatile desktop application designed to merge PDFs, images, DOCX, and XML documents into a single PDF file. Built with PyQt5 for a user-friendly interface and leveraging PyPDF2, Pillow, python-docx, lxml, and reportlab, this application supports multiple file formats with drag-and-drop functionality and interactive file management.
 
-![alt text](./dungerzFile%20Merger.png)
+![alt text](./dungerzFileMerger.png)
 
 ## Table of Contents
 

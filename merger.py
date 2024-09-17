@@ -4,14 +4,34 @@ from PyQt5.QtWidgets import (
     QApplication, QMainWindow, QListWidget, QPushButton, QVBoxLayout, QWidget, 
     QFileDialog, QMessageBox, QHBoxLayout, QProgressBar, QLabel, QGridLayout
 )
-from PyQt5.QtCore import Qt
+from PyQt5.QtCore import Qt, QThread, pyqtSignal
+from PyQt5.QtGui import QPixmap, QDragEnterEvent, QDropEvent
 from PyPDF2 import PdfReader, PdfWriter
 from PIL import Image
 from io import BytesIO
-from docx import Document  # For handling DOCX files
-from lxml import etree  # For handling XML files
+from docx import Document
+from docx.shared import Inches
+from lxml import etree
 from reportlab.lib.pagesizes import letter
 from reportlab.pdfgen import canvas
+import tempfile
+import comtypes.client
+
+class FileProcessorThread(QThread):
+    progress = pyqtSignal(int)
+    error = pyqtSignal(str)
+
+    def __init__(self, function, *args, **kwargs):
+        super().__init__()
+        self.function = function
+        self.args = args
+        self.kwargs = kwargs
+
+    def run(self):
+        try:
+            self.function(*self.args, **self.kwargs)
+        except Exception as e:
+            self.error.emit(str(e))
 
 class FileMerger(QMainWindow):
     def __init__(self):
@@ -148,26 +168,26 @@ class FileMerger(QMainWindow):
         else:
             event.ignore()
 
-    # Drop Event (for the entire window)
-    def dropEvent(self, event):
-        if event.mimeData().hasUrls():
-            for url in event.mimeData().urls():
-                if url.isLocalFile():
-                    file_path = url.toLocalFile()
-                    if file_path.lower().endswith(('.pdf', '.jpg', '.jpeg', '.png', '.bmp', '.gif', '.tiff', '.docx', '.xml')):
-                        self.listWidget.addItem(file_path)
-            event.acceptProposedAction()
-        else:
-            event.ignore()
-
+    def dropEvent(self, event: QDropEvent):
+        files = [u.toLocalFile() for u in event.mimeData().urls()]
+        self.add_files(files)
     # File Explorer to open PDF, DOCX, Image, or XML files
     def open_file_explorer(self):
-        files, _ = QFileDialog.getOpenFileNames(self, "Select Files", "", 
-                                                "All Files (*);;PDF Files (*.pdf);;Word Files (*.docx);;Image Files (*.jpg *.jpeg *.png *.bmp *.gif *.tiff);;XML Files (*.xml)")
-        if files:
-            for file in files:
-                if file.lower().endswith(('.pdf', '.jpg', '.jpeg', '.png', '.bmp', '.gif', '.tiff', '.docx', '.xml')):
+        files, _ = QFileDialog.getOpenFileNames(
+            self, "Select Files", "", 
+            "All Files (*);;PDF Files (*.pdf);;Word Files (*.docx);;Image Files (*.jpg *.jpeg *.png *.bmp *.gif *.tiff);;XML Files (*.xml)"
+        )
+        self.add_files(files)
+
+    def add_files(self, files):
+        for file in files:
+            if file.lower().endswith(('.pdf', '.jpg', '.jpeg', '.png', '.bmp', '.gif', '.tiff', '.docx', '.xml')):
+                # Check if the file is already in the list
+                items = self.listWidget.findItems(file, Qt.MatchExactly)
+                if not items:
                     self.listWidget.addItem(file)
+            else:
+                QMessageBox.warning(self, "Unsupported File", f"The file {os.path.basename(file)} is not supported.")
 
     # Merge the selected files and export to desired format (PDF, DOCX, etc.)
     def merge_files(self):
@@ -181,99 +201,176 @@ class FileMerger(QMainWindow):
         if not output_filename:
             return
 
-        # Determine if exporting as PDF or DOCX
-        is_pdf = selected_format == "PDF Files (*.pdf)"
-        is_docx = selected_format == "Word Files (*.docx)"
+        _, file_extension = os.path.splitext(output_filename)
+        
+        if file_extension.lower() == '.pdf':
+            self.process_files(self.export_to_pdf, output_filename)
+        elif file_extension.lower() == '.docx':
+            self.process_files(self.export_to_docx, output_filename)
+        else:
+            QMessageBox.warning(self, "Unsupported Format", f"The format {file_extension} is not supported.")
 
-        if is_pdf:
-            self.export_to_pdf(output_filename)
-        elif is_docx:
-            self.export_to_docx(output_filename)
+    def process_files(self, export_function, output_filename):
+        self.thread = FileProcessorThread(export_function, output_filename)
+        self.thread.progress.connect(self.update_progress)
+        self.thread.error.connect(self.show_error_message)
+        self.thread.finished.connect(self.on_merge_finished)
+        self.thread.start()
+        self.mergeButton.setEnabled(False)
 
-        # Reset the progress bar at the end
+    def update_progress(self, value):
+        self.progressBar.setValue(value)
+
+    def show_error_message(self, message):
+        QMessageBox.warning(self, "Merge Failed", f"An error occurred during the merge process: {message}")
+
+    def on_merge_finished(self):
         self.progressBar.setValue(0)
+        self.mergeButton.setEnabled(True)
+        QMessageBox.information(self, "Merge Successful", f"Merged file saved successfully.")
+        self.listWidget.clear()
 
     # Export merged files as PDF
     def export_to_pdf(self, output_filename):
-        try:
-            pdf_writer = PdfWriter()
-            num_files = self.listWidget.count()
-            for index in range(num_files):
-                filepath = self.listWidget.item(index).text()
-                if filepath.lower().endswith('.pdf'):
-                    # Handle PDF files
-                    pdf_reader = PdfReader(filepath)
-                    for page in pdf_reader.pages:
-                        pdf_writer.add_page(page)
-                elif filepath.lower().endswith(('.jpg', '.jpeg', '.png', '.bmp', '.gif', '.tiff')):
-                    # Convert image to PDF and add to the writer
-                    image = Image.open(filepath)
-                    pdf_bytes = BytesIO()
-                    image.convert("RGB").save(pdf_bytes, format='PDF')  # Save image as PDF in memory
-                    pdf_bytes.seek(0)
-                    temp_reader = PdfReader(pdf_bytes)
-                    for page in temp_reader.pages:
-                        pdf_writer.add_page(page)
-                elif filepath.lower().endswith('.docx'):
-                    # Convert DOCX to PDF
-                    pdf_bytes = self.convert_docx_to_pdf(filepath)
-                    temp_reader = PdfReader(pdf_bytes)
-                    for page in temp_reader.pages:
-                        pdf_writer.add_page(page)
-                elif filepath.lower().endswith('.xml'):
-                    # Convert XML to PDF
-                    pdf_bytes = self.convert_xml_to_pdf(filepath)
-                    temp_reader = PdfReader(pdf_bytes)
-                    for page in temp_reader.pages:
-                        pdf_writer.add_page(page)
+        pdf_writer = PdfWriter()
+        num_files = self.listWidget.count()
+        for index in range(num_files):
+            filepath = self.listWidget.item(index).text()
+            self.add_file_to_pdf(pdf_writer, filepath)
+            self.thread.progress.emit(int((index + 1) / num_files * 100))
 
-                self.progressBar.setValue(int((index + 1) / num_files * 100))  # Update progress
+        with open(output_filename, 'wb') as out:
+            pdf_writer.write(out)
 
-            with open(output_filename, 'wb') as out:
-                pdf_writer.write(out)
+    def add_file_to_pdf(self, pdf_writer, filepath):
+        _, file_extension = os.path.splitext(filepath)
+        
+        if file_extension.lower() == '.pdf':
+            self.add_pdf_to_pdf(pdf_writer, filepath)
+        elif file_extension.lower() in ('.jpg', '.jpeg', '.png', '.bmp', '.gif', '.tiff'):
+            self.add_image_to_pdf(pdf_writer, filepath)
+        elif file_extension.lower() == '.docx':
+            self.add_docx_to_pdf(pdf_writer, filepath)
+        elif file_extension.lower() == '.xml':
+            self.add_xml_to_pdf(pdf_writer, filepath)
+        else:
+            raise ValueError(f"Unsupported file format: {file_extension}")
 
-            QMessageBox.information(self, "Merge Successful", f"Merged PDF saved as: {output_filename}")
-            self.listWidget.clear()  # Clear the list after successful merge
+    def add_pdf_to_pdf(self, pdf_writer, filepath):
+        pdf_reader = PdfReader(filepath)
+        for page in pdf_reader.pages:
+            pdf_writer.add_page(page)
 
-        except Exception as e:
-            QMessageBox.warning(self, "Merge Failed", f"An error occurred during the merge process: {e}")
+    def add_image_to_pdf(self, pdf_writer, filepath):
+        image = Image.open(filepath)
+        pdf_bytes = BytesIO()
+        image.convert("RGB").save(pdf_bytes, format='PDF')
+        pdf_bytes.seek(0)
+        temp_reader = PdfReader(pdf_bytes)
+        for page in temp_reader.pages:
+            pdf_writer.add_page(page)
 
-    # Export merged files as DOCX
+    def add_docx_to_pdf(self, pdf_writer, filepath):
+        # Convert DOCX to PDF using Word application
+        word = comtypes.client.CreateObject('Word.Application')
+        doc = word.Documents.Open(filepath)
+        temp_pdf = tempfile.NamedTemporaryFile(delete=False, suffix='.pdf')
+        temp_pdf.close()
+        doc.SaveAs(temp_pdf.name, FileFormat=17)  # FileFormat=17 is for PDF
+        doc.Close()
+        word.Quit()
+
+        # Add the temporary PDF to the PDF writer
+        temp_reader = PdfReader(temp_pdf.name)
+        for page in temp_reader.pages:
+            pdf_writer.add_page(page)
+
+        # Clean up the temporary file
+        os.unlink(temp_pdf.name)
+
+    def add_xml_to_pdf(self, pdf_writer, filepath):
+        # Parse XML and create a PDF
+        tree = etree.parse(filepath)
+        root = tree.getroot()
+
+        pdf_bytes = BytesIO()
+        c = canvas.Canvas(pdf_bytes, pagesize=letter)
+        width, height = letter
+        y = height - 50  # Start from top of the page
+
+        def add_element(element, indent=0):
+            nonlocal y
+            if y < 50:  # If near bottom of page, start a new page
+                c.showPage()
+                y = height - 50
+
+            tag = element.tag
+            text = element.text.strip() if element.text else ""
+            c.drawString(50 + indent * 20, y, f"{tag}: {text}")
+            y -= 20
+
+            for child in element:
+                add_element(child, indent + 1)
+
+        add_element(root)
+        c.save()
+
+        pdf_bytes.seek(0)
+        temp_reader = PdfReader(pdf_bytes)
+        for page in temp_reader.pages:
+            pdf_writer.add_page(page)
+
     def export_to_docx(self, output_filename):
-        try:
-            doc = Document()
-            num_files = self.listWidget.count()
-            for index in range(num_files):
-                filepath = self.listWidget.item(index).text()
-                if filepath.lower().endswith('.pdf'):
-                    # Extract text from PDF and add to DOCX
-                    pdf_reader = PdfReader(filepath)
-                    for page in pdf_reader.pages:
-                        doc.add_paragraph(page.extract_text())
-                elif filepath.lower().endswith(('.jpg', '.jpeg', '.png', '.bmp', '.gif', '.tiff')):
-                    # Convert image to text (or just add a placeholder)
-                    doc.add_paragraph(f"[Image: {os.path.basename(filepath)}]")
-                elif filepath.lower().endswith('.docx'):
-                    # Add DOCX content
-                    docx_reader = Document(filepath)
-                    for para in docx_reader.paragraphs:
-                        doc.add_paragraph(para.text)
-                elif filepath.lower().endswith('.xml'):
-                    # Add XML content as plain text
-                    with open(filepath, 'r', encoding='utf-8') as xml_file:
-                        doc.add_paragraph(xml_file.read())
+        doc = Document()
+        num_files = self.listWidget.count()
+        for index in range(num_files):
+            filepath = self.listWidget.item(index).text()
+            self.add_file_to_docx(doc, filepath)
+            self.thread.progress.emit(int((index + 1) / num_files * 100))
 
-                self.progressBar.setValue(int((index + 1) / num_files * 100))  # Update progress
+        doc.save(output_filename)
 
-            doc.save(output_filename)
+    def add_file_to_docx(self, doc, filepath):
+        _, file_extension = os.path.splitext(filepath)
+        
+        if file_extension.lower() == '.pdf':
+            self.add_pdf_to_docx(doc, filepath)
+        elif file_extension.lower() in ('.jpg', '.jpeg', '.png', '.bmp', '.gif', '.tiff'):
+            self.add_image_to_docx(doc, filepath)
+        elif file_extension.lower() == '.docx':
+            self.add_docx_to_docx(doc, filepath)
+        elif file_extension.lower() == '.xml':
+            self.add_xml_to_docx(doc, filepath)
+        else:
+            raise ValueError(f"Unsupported file format: {file_extension}")
 
-            QMessageBox.information(self, "Merge Successful", f"Merged DOCX saved as: {output_filename}")
-            self.listWidget.clear()  # Clear the list after successful merge
+    def add_pdf_to_docx(self, doc, filepath):
+        pdf_reader = PdfReader(filepath)
+        for page in pdf_reader.pages:
+            doc.add_paragraph(page.extract_text())
 
-        except Exception as e:
-            QMessageBox.warning(self, "Merge Failed", f"An error occurred during the merge process: {e}")
+    def add_image_to_docx(self, doc, filepath):
+        doc.add_picture(filepath, width=Inches(6))
 
-    # Clear the list of selected files
+    def add_docx_to_docx(self, doc, filepath):
+        src_doc = Document(filepath)
+        for element in src_doc.element.body:
+            doc.element.body.append(element)
+
+    def add_xml_to_docx(self, doc, filepath):
+        tree = etree.parse(filepath)
+        root = tree.getroot()
+
+        def add_element(element, indent=0):
+            tag = element.tag
+            text = element.text.strip() if element.text else ""
+            doc.add_paragraph(f"{'  ' * indent}{tag}: {text}")
+
+            for child in element:
+                add_element(child, indent + 1)
+
+        add_element(root)
+
     def clear_list(self):
         self.listWidget.clear()
 
